@@ -16,7 +16,7 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=rag-api
 
-# 환경 변수 (필요시 수정)
+# 환경 변수 파일 로드
 EnvironmentFile=/home/ubuntu/rag/.env
 
 [Install]
