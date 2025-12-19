@@ -80,7 +80,7 @@ jobs:
 
           # EC2에서 배포 스크립트 실행
           ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+            ${EC2_USER}@${EC2_HOST} << 'ENDSSH'
             set -e
 
             APP_DIR="\$HOME/rag"
@@ -88,10 +88,31 @@ jobs:
 
             echo "📥 backend 폴더 동기화 완료"
             echo "🔍 디렉토리 구조 확인..."
+            echo "   HOME: \$HOME"
             echo "   APP_DIR: \$APP_DIR"
             echo "   BACKEND_DIR: \$BACKEND_DIR"
-            ls -la "\$APP_DIR" || echo "APP_DIR이 없습니다"
-            ls -la "\$BACKEND_DIR" || echo "BACKEND_DIR이 없습니다"
+            echo "   현재 위치: \$(pwd)"
+
+            # 디렉토리 확인
+            if [ -d "\$APP_DIR" ]; then
+              echo "✅ APP_DIR 존재: \$APP_DIR"
+              echo "   내용:"
+              ls -la "\$APP_DIR" | head -10
+            else
+              echo "❌ APP_DIR 없음: \$APP_DIR"
+              echo "   생성 중..."
+              mkdir -p "\$APP_DIR"
+            fi
+
+            if [ -d "\$BACKEND_DIR" ]; then
+              echo "✅ BACKEND_DIR 존재: \$BACKEND_DIR"
+              echo "   내용:"
+              ls -la "\$BACKEND_DIR" | head -15
+            else
+              echo "❌ BACKEND_DIR 없음: \$BACKEND_DIR"
+              echo "   생성 중..."
+              mkdir -p "\$BACKEND_DIR"
+            fi
 
             # 필수 패키지 설치 확인
             echo "📦 필수 패키지 확인 중..."
@@ -111,29 +132,39 @@ jobs:
             source "\$APP_DIR/venv/bin/activate"
             pip install --upgrade pip
 
-            # backend 디렉토리 확인 및 이동
-            echo "📂 작업 디렉토리 확인: \$BACKEND_DIR"
+            # backend 디렉토리로 이동
+            echo "📂 작업 디렉토리로 이동: \$BACKEND_DIR"
             if [ ! -d "\$BACKEND_DIR" ]; then
               echo "❌ 오류: \$BACKEND_DIR 디렉토리가 존재하지 않습니다."
               echo "   생성 중..."
               mkdir -p "\$BACKEND_DIR"
-              echo "   디렉토리 생성 완료"
             fi
 
             # 디렉토리 내용 확인
-            echo "📋 디렉토리 내용:"
+            echo "📋 디렉토리 내용 (이동 전):"
             ls -la "\$BACKEND_DIR" || echo "디렉토리 읽기 실패"
 
             cd "\$BACKEND_DIR" || {
               echo "❌ cd 실패: \$BACKEND_DIR"
               echo "   현재 위치: \$(pwd)"
-              echo "   디렉토리 존재 여부: [ -d '\$BACKEND_DIR' ] && echo '존재' || echo '없음'"
               exit 1
             }
-            echo "✅ 현재 디렉토리: \$(pwd)"
-            echo "📄 requirements.txt 확인:"
-            ls -la requirements.txt || echo "⚠️  requirements.txt 파일이 없습니다!"
 
+            echo "✅ 현재 디렉토리: \$(pwd)"
+            echo "📄 파일 목록:"
+            ls -la
+
+            # requirements.txt 확인
+            if [ ! -f "requirements.txt" ]; then
+              echo "❌ requirements.txt 파일이 없습니다!"
+              echo "   디렉토리 내용:"
+              ls -la
+              echo "   상위 디렉토리 확인:"
+              ls -la ..
+              exit 1
+            fi
+
+            echo "✅ requirements.txt 발견, 의존성 설치 시작..."
             pip install -r requirements.txt
 
             # 환경 변수 파일 확인
