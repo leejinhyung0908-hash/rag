@@ -66,16 +66,23 @@ jobs:
 
           # rsync: 현재 디렉토리(backend/)의 모든 내용을 EC2의 ${EC2_BACKEND_DIR}/로 복사
           # 중요: rsync의 동작 방식
-          # - rsync ./ target/  -> 현재 디렉토리의 내용을 target/에 복사
-          # - rsync . target/   -> 현재 디렉토리의 내용을 target/에 복사 (동일)
-          # - rsync ./ target   -> 현재 디렉토리를 target이라는 이름으로 복사 (잘못됨)
+          # - rsync . target/  -> 현재 디렉토리의 내용을 target/에 복사 (권장)
+          # - rsync ./ target/ -> 현재 디렉토리의 내용을 target/에 복사 (동일)
+          # - rsync . target   -> 현재 디렉토리를 target이라는 이름으로 복사 (잘못됨)
           # 따라서 대상 경로 끝에 반드시 / 를 붙여야 함
-          echo "   rsync 실행: $(pwd)/* -> ${EC2_BACKEND_DIR}/"
-          echo "   대상 경로 확인: ${EC2_BACKEND_DIR}/ (끝에 슬래시 있음)"
+          echo "   rsync 실행: $(pwd)/ -> ${EC2_BACKEND_DIR}/"
+          echo "   현재 디렉토리: $(pwd)"
+          echo "   대상 경로: ${EC2_BACKEND_DIR}/ (끝에 슬래시 있음)"
+          echo "   복사할 파일 목록:"
+          ls -la . | head -10
 
           # rsync 실행 및 결과 확인
-          # * 을 사용하여 현재 디렉토리의 모든 파일과 폴더를 명시적으로 복사
-          # 이렇게 하면 현재 디렉토리 자체가 아닌 내용만 복사됨
+          # . 을 사용하여 현재 디렉토리의 모든 내용(숨김 파일 포함)을 복사
+          # -a 옵션은 아카이브 모드로 권한, 타임스탬프 등을 보존
+          # 대상 경로를 명시적으로 구성하여 변수 확장 문제 방지
+          REMOTE_TARGET="${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"
+          echo "   최종 대상 경로: ${REMOTE_TARGET}"
+
           if rsync -avz --delete \
             -e "ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no" \
             --exclude='.git' \
@@ -84,8 +91,11 @@ jobs:
             --exclude='.env' \
             --exclude='.pytest_cache' \
             --exclude='*.log' \
-            * \
-            "${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"; then
+            --exclude='.DS_Store' \
+            --exclude='venv' \
+            --exclude='.venv' \
+            . \
+            "${REMOTE_TARGET}"; then
             echo "✅ rsync 성공"
           else
             echo "❌ rsync 실패"
@@ -96,7 +106,11 @@ jobs:
           echo "🔍 rsync 후 디렉토리 확인..."
           ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
             ${EC2_USER}@${EC2_HOST} \
-            "echo '=== 디렉토리 확인 ===' && \
+            "set -e && \
+             echo '=== 디렉토리 확인 ===' && \
+             echo 'APP_DIR: ${EC2_APP_DIR}' && \
+             echo 'BACKEND_DIR: ${EC2_BACKEND_DIR}' && \
+             echo '' && \
              echo 'APP_DIR 존재 여부:' && [ -d ${EC2_APP_DIR} ] && echo '✅ 존재' || echo '❌ 없음' && \
              echo 'BACKEND_DIR 존재 여부:' && [ -d ${EC2_BACKEND_DIR} ] && echo '✅ 존재' || echo '❌ 없음' && \
              echo '' && \
@@ -105,8 +119,21 @@ jobs:
              echo 'BACKEND_DIR 내용:' && ls -la ${EC2_BACKEND_DIR}/ 2>&1 | head -15 && \
              echo '' && \
              echo 'requirements.txt 위치 확인:' && \
-             ([ -f ${EC2_BACKEND_DIR}/requirements.txt ] && echo '✅ ${EC2_BACKEND_DIR}/requirements.txt 존재' || echo '❌ ${EC2_BACKEND_DIR}/requirements.txt 없음') && \
-             ([ -f ${EC2_APP_DIR}/requirements.txt ] && echo '⚠️  ${EC2_APP_DIR}/requirements.txt 존재 (잘못된 위치!)' || echo '✅ ${EC2_APP_DIR}/requirements.txt 없음 (정상)')"
+             if [ -f ${EC2_BACKEND_DIR}/requirements.txt ]; then \
+               echo '✅ ${EC2_BACKEND_DIR}/requirements.txt 존재'; \
+             else \
+               echo '❌ ${EC2_BACKEND_DIR}/requirements.txt 없음'; \
+               echo '⚠️  파일이 잘못된 위치에 복사되었을 수 있습니다.'; \
+               if [ -f ${EC2_APP_DIR}/requirements.txt ]; then \
+                 echo '⚠️  ${EC2_APP_DIR}/requirements.txt 존재 (잘못된 위치!)'; \
+                 echo '⚠️  파일을 올바른 위치로 이동합니다...'; \
+                 mv ${EC2_APP_DIR}/requirements.txt ${EC2_BACKEND_DIR}/requirements.txt && \
+                 echo '✅ 파일 이동 완료'; \
+               fi; \
+             fi && \
+             echo '' && \
+             echo '최종 확인: BACKEND_DIR의 requirements.txt' && \
+             [ -f ${EC2_BACKEND_DIR}/requirements.txt ] && echo '✅ requirements.txt가 올바른 위치에 있습니다.' || echo '❌ requirements.txt가 여전히 없습니다.'"
 
           # EC2에서 배포 스크립트 실행
           ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
