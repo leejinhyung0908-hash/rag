@@ -17,9 +17,10 @@ jobs:
     name: Deploy to EC2
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: backend  # 모든 run 명령은 backend 폴더 기준으로 실행
+    # working-directory를 제거하고 명시적으로 backend/ 경로를 사용
+    # defaults:
+    #   run:
+    #     working-directory: backend
 
     steps:
       - name: Checkout code
@@ -55,13 +56,14 @@ jobs:
             "mkdir -p ${EC2_BACKEND_DIR} && chmod 755 ${EC2_BACKEND_DIR}"
 
           # rsync로 backend 폴더만 전송
-          # working-directory가 backend이므로, 현재 디렉토리는 backend/
+          # working-directory를 제거했으므로, 현재 디렉토리는 리포지토리 루트
           echo "📤 backend 폴더 동기화 중..."
           echo "   현재 작업 디렉토리: $(pwd)"
-          echo "   소스 내용 (현재 디렉토리):"
-          ls -la . | head -10
+          echo "   소스: backend/ (명시적 경로)"
+          echo "   소스 내용 (backend/ 디렉토리):"
+          ls -la backend/ | head -10
           echo "   requirements.txt 존재 여부:"
-          [ -f "requirements.txt" ] && echo "   ✅ requirements.txt 존재" || echo "   ❌ requirements.txt 없음"
+          [ -f "backend/requirements.txt" ] && echo "   ✅ requirements.txt 존재" || echo "   ❌ requirements.txt 없음"
           echo "   대상 경로: ${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"
 
           # rsync: 현재 디렉토리(backend/)의 모든 내용을 EC2의 ${EC2_BACKEND_DIR}/로 복사
@@ -77,12 +79,31 @@ jobs:
           ls -la . | head -10
 
           # rsync 실행 및 결과 확인
-          # . 을 사용하여 현재 디렉토리의 모든 내용(숨김 파일 포함)을 복사
-          # -a 옵션은 아카이브 모드로 권한, 타임스탬프 등을 보존
-          # 대상 경로를 명시적으로 구성하여 변수 확장 문제 방지
-          REMOTE_TARGET="${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"
+          # 중요: working-directory가 backend이므로 현재 디렉토리는 backend/
+          # rsync의 올바른 사용법:
+          # - rsync source/ target/  -> source의 내용을 target에 복사
+          # - rsync source target/   -> source를 target 안에 복사 (source 디렉토리 자체가 복사됨)
+          # 우리는 backend/의 내용을 /home/ubuntu/rag/backend/에 복사해야 함
+          # 따라서 . 을 사용하면 현재 디렉토리(backend/)의 내용이 복사됨
+          REMOTE_TARGET="${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}"
           echo "   최종 대상 경로: ${REMOTE_TARGET}"
+          echo "   주의: 대상 경로 끝에 / 없음 (rsync가 디렉토리 자체를 처리하도록)"
 
+          # rsync 실행 전 기존 backend 디렉토리 삭제 (깨끗한 상태로 시작)
+          echo "   기존 백엔드 디렉토리 정리 중..."
+          ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
+            ${EC2_USER}@${EC2_HOST} \
+            "rm -rf ${EC2_BACKEND_DIR}/* ${EC2_BACKEND_DIR}/.* 2>/dev/null || true"
+
+          # rsync 실행: backend/ 폴더의 모든 내용을 EC2의 ${EC2_BACKEND_DIR}/로 복사
+          # working-directory를 제거했으므로, 명시적으로 backend/ 경로를 사용
+          echo "   rsync 실행 전 최종 확인:"
+          echo "   - 현재 디렉토리: $(pwd)"
+          echo "   - 소스: backend/ (명시적 경로)"
+          echo "   - 대상: ${REMOTE_TARGET}/"
+
+          # rsync 실행: backend/ 폴더의 모든 내용을 복사
+          # backend/ 를 소스로 사용하면 backend/의 내용이 복사됨
           if rsync -avz --delete \
             -e "ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no" \
             --exclude='.git' \
@@ -94,13 +115,23 @@ jobs:
             --exclude='.DS_Store' \
             --exclude='venv' \
             --exclude='.venv' \
-            . \
-            "${REMOTE_TARGET}"; then
+            --exclude='node_modules' \
+            --exclude='.gitignore' \
+            backend/ \
+            "${REMOTE_TARGET}/"; then
             echo "✅ rsync 성공"
           else
             echo "❌ rsync 실패"
             exit 1
           fi
+
+          # rsync 후 즉시 확인
+          echo "   rsync 직후 확인:"
+          ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
+            ${EC2_USER}@${EC2_HOST} \
+            "echo 'BACKEND_DIR 내용:' && ls -la ${EC2_BACKEND_DIR}/ 2>&1 | head -10 && \
+             echo 'requirements.txt 존재 여부:' && \
+             ([ -f ${EC2_BACKEND_DIR}/requirements.txt ] && echo '✅ 존재' || echo '❌ 없음')"
 
           # rsync 후 디렉토리 확인
           echo "🔍 rsync 후 디렉토리 확인..."
