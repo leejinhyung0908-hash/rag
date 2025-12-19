@@ -5,6 +5,8 @@ on:
     branches:
       - main
       - master
+    paths:
+      - 'backend/**'  # backend 폴더 변경시에만 실행
   workflow_dispatch:  # 수동 실행 가능
 
 env:
@@ -15,11 +17,16 @@ jobs:
     name: Deploy to EC2
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: backend  # 모든 run 명령은 backend 폴더 기준으로 실행
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup SSH
+        shell: bash
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
@@ -27,43 +34,47 @@ jobs:
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy to EC2
+        shell: bash
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
+          # backend 폴더를 EC2로 동기화
+          echo "🚀 배포 시작..."
+
+          APP_DIR="$HOME/rag"
+          BACKEND_DIR="$APP_DIR/backend"
+
+          # rsync로 backend 폴더만 전송
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no" \
+            ./ \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:$BACKEND_DIR/
+
+          # EC2에서 배포 스크립트 실행
           ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
             set -e
 
-            echo "🚀 배포 시작..."
-
-            # 앱 디렉토리로 이동 또는 클론
             APP_DIR="$HOME/rag"
-            if [ ! -d "$APP_DIR" ]; then
-              echo "📦 저장소 클론 중..."
-              git clone https://github.com/${{ github.repository }}.git "$APP_DIR"
-            fi
+            BACKEND_DIR="$APP_DIR/backend"
 
-            cd "$APP_DIR"
-
-            # 최신 코드 가져오기
-            echo "📥 최신 코드 가져오기..."
-            git fetch origin
-            git reset --hard origin/${{ github.ref_name }}
+            echo "📥 backend 폴더 동기화 완료"
 
             # Python 가상환경 설정
-            if [ ! -d "venv" ]; then
+            if [ ! -d "$APP_DIR/venv" ]; then
               echo "🐍 Python 가상환경 생성..."
-              python3 -m venv venv
+              python3 -m venv "$APP_DIR/venv"
             fi
 
             echo "📚 의존성 설치..."
-            source venv/bin/activate
+            source "$APP_DIR/venv/bin/activate"
             pip install --upgrade pip
-            pip install -r backend/requirements.txt
+            cd "$BACKEND_DIR"
+            pip install -r requirements.txt
 
             # 환경 변수 파일 확인
-            if [ ! -f .env ]; then
+            if [ ! -f "$APP_DIR/.env" ]; then
               echo "⚠️  .env 파일이 없습니다. 수동으로 생성해주세요."
             fi
 
@@ -90,6 +101,7 @@ jobs:
           ENDSSH
 
       - name: Health Check
+        shell: bash
         run: |
           sleep 10
           if curl -f http://${{ secrets.EC2_HOST }}:8000/health > /dev/null 2>&1; then
