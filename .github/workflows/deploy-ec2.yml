@@ -210,6 +210,15 @@ jobs:
               echo "✅ 파일 이동 완료"
             fi
 
+            # 디스크 공간 확인
+            echo "💾 디스크 공간 확인:"
+            df -h
+
+            # 불필요한 패키지 정리
+            echo "🧹 시스템 정리 중..."
+            sudo apt-get clean || true
+            sudo apt-get autoremove -y || true
+
             # 필수 패키지 설치 확인
             echo "📦 필수 패키지 확인 중..."
             if ! dpkg -l | grep -q python3-venv; then
@@ -270,7 +279,28 @@ jobs:
             fi
 
             echo "✅ requirements.txt 발견, 의존성 설치 시작..."
-            pip install -r requirements.txt
+
+            # 디스크 공간 확인
+            echo "💾 디스크 공간 확인:"
+            df -h
+
+            # pip 캐시 정리
+            echo "🧹 pip 캐시 정리 중..."
+            pip cache purge || true
+
+            # CPU 전용 PyTorch 설치 (CUDA 없이, 디스크 공간 절약)
+            # torch는 매우 크므로 CPU 버전만 설치
+            echo "📦 CPU 전용 PyTorch 설치 중..."
+            pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --no-cache-dir
+
+            # requirements.txt에서 torch 제외하고 나머지 설치
+            echo "📦 나머지 의존성 설치 중..."
+            # requirements.txt를 임시로 수정하여 torch 제외
+            grep -v "^torch" requirements.txt > requirements_temp.txt || cp requirements.txt requirements_temp.txt
+            pip install -r requirements_temp.txt --no-cache-dir
+            rm -f requirements_temp.txt
+
+            echo "✅ 의존성 설치 완료"
 
             # 환경 변수 파일 확인
             if [ ! -f "\$APP_DIR/.env" ]; then
