@@ -42,22 +42,33 @@ jobs:
           # backend 폴더를 EC2로 동기화
           echo "🚀 배포 시작..."
 
-          APP_DIR="$HOME/rag"
-          BACKEND_DIR="$APP_DIR/backend"
+          # EC2 경로 설정 (EC2 서버의 경로 - 명시적으로 지정)
+          EC2_USER="${{ secrets.EC2_USER }}"
+          EC2_HOST="${{ secrets.EC2_HOST }}"
+          EC2_APP_DIR="/home/${EC2_USER}/rag"
+          EC2_BACKEND_DIR="${EC2_APP_DIR}/backend"
+
+          # EC2에서 디렉토리 미리 생성
+          echo "📁 EC2 디렉토리 생성 중: ${EC2_BACKEND_DIR}"
+          ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
+            ${EC2_USER}@${EC2_HOST} \
+            "mkdir -p ${EC2_BACKEND_DIR} && chmod 755 ${EC2_BACKEND_DIR}"
 
           # rsync로 backend 폴더만 전송
+          echo "📤 backend 폴더 동기화 중..."
+          echo "   대상 경로: ${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no" \
             ./ \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:$BACKEND_DIR/
+            "${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"
 
           # EC2에서 배포 스크립트 실행
           ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
             set -e
 
-            APP_DIR="$HOME/rag"
-            BACKEND_DIR="$APP_DIR/backend"
+            APP_DIR="\$HOME/rag"
+            BACKEND_DIR="\$APP_DIR/backend"
 
             echo "📥 backend 폴더 동기화 완료"
 
