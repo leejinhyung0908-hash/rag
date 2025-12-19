@@ -167,39 +167,47 @@ jobs:
              [ -f ${EC2_BACKEND_DIR}/requirements.txt ] && echo '✅ requirements.txt가 올바른 위치에 있습니다.' || echo '❌ requirements.txt가 여전히 없습니다.'"
 
           # EC2에서 배포 스크립트 실행
+          # heredoc에서 변수 확장을 위해 따옴표 없이 ENDSSH 사용
           ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
-            ${EC2_USER}@${EC2_HOST} << 'ENDSSH'
+            ${EC2_USER}@${EC2_HOST} << ENDSSH
             set -e
 
-            APP_DIR="\$HOME/rag"
-            BACKEND_DIR="\$APP_DIR/backend"
+            APP_DIR="\${HOME}/rag"
+            BACKEND_DIR="\${APP_DIR}/backend"
 
             echo "📥 backend 폴더 동기화 완료"
             echo "🔍 디렉토리 구조 확인..."
-            echo "   HOME: \$HOME"
-            echo "   APP_DIR: \$APP_DIR"
-            echo "   BACKEND_DIR: \$BACKEND_DIR"
+            echo "   HOME: \${HOME}"
+            echo "   APP_DIR: \${APP_DIR}"
+            echo "   BACKEND_DIR: \${BACKEND_DIR}"
             echo "   현재 위치: \$(pwd)"
 
             # 디렉토리 확인
-            if [ -d "\$APP_DIR" ]; then
-              echo "✅ APP_DIR 존재: \$APP_DIR"
+            if [ -d "\${APP_DIR}" ]; then
+              echo "✅ APP_DIR 존재: \${APP_DIR}"
               echo "   내용:"
-              ls -la "\$APP_DIR" | head -10
+              ls -la "\${APP_DIR}" | head -10
             else
-              echo "❌ APP_DIR 없음: \$APP_DIR"
+              echo "❌ APP_DIR 없음: \${APP_DIR}"
               echo "   생성 중..."
-              mkdir -p "\$APP_DIR"
+              mkdir -p "\${APP_DIR}"
             fi
 
-            if [ -d "\$BACKEND_DIR" ]; then
-              echo "✅ BACKEND_DIR 존재: \$BACKEND_DIR"
+            if [ -d "\${BACKEND_DIR}" ]; then
+              echo "✅ BACKEND_DIR 존재: \${BACKEND_DIR}"
               echo "   내용:"
-              ls -la "\$BACKEND_DIR" | head -15
+              ls -la "\${BACKEND_DIR}" | head -15
             else
-              echo "❌ BACKEND_DIR 없음: \$BACKEND_DIR"
+              echo "❌ BACKEND_DIR 없음: \${BACKEND_DIR}"
               echo "   생성 중..."
-              mkdir -p "\$BACKEND_DIR"
+              mkdir -p "\${BACKEND_DIR}"
+            fi
+
+            # requirements.txt가 잘못된 위치에 있으면 이동
+            if [ ! -f "\${BACKEND_DIR}/requirements.txt" ] && [ -f "\${APP_DIR}/requirements.txt" ]; then
+              echo "⚠️  requirements.txt가 잘못된 위치에 있습니다. 이동 중..."
+              mv "\${APP_DIR}/requirements.txt" "\${BACKEND_DIR}/requirements.txt"
+              echo "✅ 파일 이동 완료"
             fi
 
             # 필수 패키지 설치 확인
@@ -211,29 +219,29 @@ jobs:
             fi
 
             # Python 가상환경 설정
-            if [ ! -d "\$APP_DIR/venv" ]; then
+            if [ ! -d "\${APP_DIR}/venv" ]; then
               echo "🐍 Python 가상환경 생성..."
-              python3 -m venv "\$APP_DIR/venv"
+              python3 -m venv "\${APP_DIR}/venv"
             fi
 
             echo "📚 의존성 설치..."
-            source "\$APP_DIR/venv/bin/activate"
+            source "\${APP_DIR}/venv/bin/activate"
             pip install --upgrade pip
 
             # backend 디렉토리로 이동
-            echo "📂 작업 디렉토리로 이동: \$BACKEND_DIR"
-            if [ ! -d "\$BACKEND_DIR" ]; then
-              echo "❌ 오류: \$BACKEND_DIR 디렉토리가 존재하지 않습니다."
+            echo "📂 작업 디렉토리로 이동: \${BACKEND_DIR}"
+            if [ ! -d "\${BACKEND_DIR}" ]; then
+              echo "❌ 오류: \${BACKEND_DIR} 디렉토리가 존재하지 않습니다."
               echo "   생성 중..."
-              mkdir -p "\$BACKEND_DIR"
+              mkdir -p "\${BACKEND_DIR}"
             fi
 
             # 디렉토리 내용 확인
             echo "📋 디렉토리 내용 (이동 전):"
-            ls -la "\$BACKEND_DIR" || echo "디렉토리 읽기 실패"
+            ls -la "\${BACKEND_DIR}" || echo "디렉토리 읽기 실패"
 
-            cd "\$BACKEND_DIR" || {
-              echo "❌ cd 실패: \$BACKEND_DIR"
+            cd "\${BACKEND_DIR}" || {
+              echo "❌ cd 실패: \${BACKEND_DIR}"
               echo "   현재 위치: \$(pwd)"
               exit 1
             }
@@ -242,14 +250,23 @@ jobs:
             echo "📄 파일 목록:"
             ls -la
 
-            # requirements.txt 확인
+            # requirements.txt 확인 및 복구
             if [ ! -f "requirements.txt" ]; then
               echo "❌ requirements.txt 파일이 없습니다!"
               echo "   디렉토리 내용:"
               ls -la
               echo "   상위 디렉토리 확인:"
               ls -la ..
-              exit 1
+
+              # 상위 디렉토리에서 requirements.txt 찾아서 이동
+              if [ -f "\${APP_DIR}/requirements.txt" ]; then
+                echo "⚠️  상위 디렉토리에서 requirements.txt 발견. 이동 중..."
+                mv "\${APP_DIR}/requirements.txt" "\${BACKEND_DIR}/requirements.txt"
+                echo "✅ 파일 이동 완료"
+              else
+                echo "❌ requirements.txt를 찾을 수 없습니다."
+                exit 1
+              fi
             fi
 
             echo "✅ requirements.txt 발견, 의존성 설치 시작..."
