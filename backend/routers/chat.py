@@ -2,8 +2,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 import psycopg
 
-from backend.dependencies import get_db_connection, get_llm
-from backend.models import ChatRequest, ChatResponse
+from backend.dependencies import get_db_connection, get_llm, get_qlora_service
+from backend.models import ChatRequest, ChatResponse, QLoRARequest, QLoRAResponse
 from backend.services.database import search_similar
 from backend.services.rag import (
     local_only,
@@ -97,5 +97,42 @@ async def chat_endpoint(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         print(f"[FastAPI] /chat 오류: {exc}", flush=True)
+        raise HTTPException(status_code=500, detail=f"서버 오류: {str(exc)}")
+
+
+@router.post("/chat/qlora", response_model=QLoRAResponse)
+async def qlora_chat_endpoint(
+    request: QLoRARequest,
+    qlora_service=Depends(get_qlora_service),
+) -> QLoRAResponse:
+    """QLoRA 모델을 사용한 채팅 엔드포인트.
+
+    LoRA 어댑터가 적용된 모델을 사용하여 텍스트를 생성합니다.
+    """
+    try:
+        prompt = request.prompt.strip()
+        if not prompt:
+            raise HTTPException(status_code=400, detail="프롬프트가 비어있습니다.")
+
+        # 모델이 로드되지 않았으면 로드
+        if not qlora_service.is_loaded():
+            qlora_service.load()
+
+        # 텍스트 생성
+        response_text = qlora_service.generate(
+            prompt=prompt,
+            max_new_tokens=request.max_new_tokens,
+            temperature=request.temperature,
+            top_p=request.top_p,
+        )
+
+        return QLoRAResponse(response=response_text)
+
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        print(f"[FastAPI] /chat/qlora 오류: {exc}", flush=True)
         raise HTTPException(status_code=500, detail=f"서버 오류: {str(exc)}")
 

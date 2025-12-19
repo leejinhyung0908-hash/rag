@@ -37,3 +37,21 @@ class HealthResponse(BaseModel):
     status: str = Field(default="ok", description="서버 상태")
     database: str = Field(default="unknown", description="데이터베이스 연결 상태")
 
+
+class QLoRARequest(BaseModel):
+    """QLoRA 채팅 요청 모델."""
+
+    prompt: str = Field(..., description="입력 프롬프트", min_length=1)
+    max_new_tokens: int = Field(
+        default=512, description="생성할 최대 토큰 수", ge=1, le=2048
+    )
+    temperature: float = Field(
+        default=0.7, description="생성 온도", ge=0.0, le=2.0
+    )
+    top_p: float = Field(default=0.9, description="top-p 샘플링", ge=0.0, le=1.0)
+
+
+class QLoRAResponse(BaseModel):
+    """QLoRA 채팅 응답 모델."""
+
+    response: str = Field(..., description="생성된 응답")

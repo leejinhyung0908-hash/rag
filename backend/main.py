@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
 from backend.dependencies import connect_db, setup_schema, get_global_db_connection
-from backend.routers import chat, health, chat_router
+from backend.routers import chat, health
 from backend.services.database import reset_demo_data
 from backend.services.embedding import simple_embed
 from backend.services.database import search_similar
@@ -65,7 +65,6 @@ app.add_middleware(
 # 라우터 등록
 app.include_router(health.router)
 app.include_router(chat.router)
-app.include_router(chat_router.router)
 
 
 @app.get("/")

@@ -1,5 +1,6 @@
 """Mi:dm 모델 LLM 구현체."""
 import os
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -116,8 +117,25 @@ class MidmLLM(BaseLLM):
             raise RuntimeError("모델이 로드되지 않았습니다. load()를 먼저 호출하세요.")
 
         try:
+            # Mi:dm 모델은 chat template을 사용해야 함
+            # 단순 텍스트가 아닌 경우 chat template 적용 시도
+            formatted_prompt = prompt
+            try:
+                if hasattr(self._tokenizer, "apply_chat_template") and self._tokenizer.chat_template:
+                    # 사용자 메시지로 변환
+                    messages = [{"role": "user", "content": prompt}]
+                    formatted_prompt = self._tokenizer.apply_chat_template(
+                        messages,
+                        tokenize=False,
+                        add_generation_prompt=True
+                    )
+            except Exception as template_error:
+                # Chat template 적용 실패 시 원본 프롬프트 사용
+                print(f"[MidmLLM] Chat template 적용 실패, 원본 프롬프트 사용: {template_error}", flush=True)
+                formatted_prompt = prompt
+
             # 프롬프트 토크나이징
-            inputs = self._tokenizer(prompt, return_tensors="pt")
+            inputs = self._tokenizer(formatted_prompt, return_tensors="pt")
 
             # token_type_ids 제거 (모델이 사용하지 않는 경우)
             # BatchEncoding 객체를 딕셔너리로 변환하여 안전하게 제거
@@ -132,25 +150,65 @@ class MidmLLM(BaseLLM):
 
             # 텍스트 생성
             with torch.no_grad():
+                # EOS 토큰 ID 설정
+                eos_token_id = self._tokenizer.eos_token_id
+                pad_token_id = self._tokenizer.pad_token_id or eos_token_id
+
                 outputs = self._model.generate(
                     **inputs,
                     max_new_tokens=max_new_tokens,
                     temperature=temperature,
                     top_p=top_p,
                     do_sample=do_sample,
+                    eos_token_id=eos_token_id,
+                    pad_token_id=pad_token_id,
                     **kwargs
                 )
 
             # 생성된 텍스트 디코딩
+            input_length = inputs["input_ids"].shape[1]
+            generated_tokens = outputs[0][input_length:]
+
+            # 빈 응답 체크
+            if len(generated_tokens) == 0:
+                print("[MidmLLM] 경고: 생성된 토큰이 없습니다.", flush=True)
+                return "응답을 생성하지 못했습니다."
+
             generated_text = self._tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1]:],
+                generated_tokens,
                 skip_special_tokens=True
             )
 
-            return generated_text.strip()
+            # 불필요한 특수 토큰이나 접두사 제거
+            # Mi:dm 모델의 경우 특수 토큰이 포함될 수 있음
+            generated_text = generated_text.strip()
+
+            # 빈 응답 체크
+            if not generated_text:
+                print("[MidmLLM] 경고: 디코딩된 텍스트가 비어있습니다.", flush=True)
+                return "응답을 생성하지 못했습니다."
+
+            # <|start_header_id|>assistant<|end_header_id|> 같은 패턴 제거
+            if generated_text.startswith("<|start_header_id|>assistant<|end_header_id|>"):
+                generated_text = generated_text.replace("<|start_header_id|>assistant<|end_header_id|>", "").strip()
+            if generated_text.startswith("<|start_header_id|>"):
+                # 헤더 부분 제거
+                generated_text = re.sub(r"<\|start_header_id\|>.*?<\|end_header_id\|>\s*", "", generated_text, count=1).strip()
+
+            # <|eot_id|> 같은 종료 토큰 제거
+            generated_text = generated_text.replace("<|eot_id|>", "").strip()
+
+            # 최종 빈 응답 체크
+            if not generated_text:
+                return "응답을 생성하지 못했습니다."
+
+            return generated_text
 
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             print(f"[MidmLLM] 텍스트 생성 실패: {e}", flush=True)
+            print(f"[MidmLLM] 상세 오류:\n{error_details}", flush=True)
             raise
 
     def is_loaded(self) -> bool:
