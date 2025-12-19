@@ -56,11 +56,27 @@ jobs:
 
           # rsync로 backend 폴더만 전송
           echo "📤 backend 폴더 동기화 중..."
+          echo "   소스: $(pwd)"
+          echo "   소스 내용:"
+          ls -la . | head -10
           echo "   대상 경로: ${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"
-          rsync -avz --delete \
+
+          # rsync 실행 및 결과 확인
+          if rsync -avz --delete \
             -e "ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no" \
             ./ \
-            "${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"
+            "${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"; then
+            echo "✅ rsync 성공"
+          else
+            echo "❌ rsync 실패"
+            exit 1
+          fi
+
+          # rsync 후 디렉토리 확인
+          echo "🔍 rsync 후 디렉토리 확인..."
+          ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
+            ${EC2_USER}@${EC2_HOST} \
+            "echo '디렉토리 존재 여부:' && [ -d ${EC2_BACKEND_DIR} ] && echo '✅ 존재' || echo '❌ 없음'; echo '디렉토리 내용:' && ls -la ${EC2_BACKEND_DIR}/ 2>&1 | head -10 || echo '읽기 실패'"
 
           # EC2에서 배포 스크립트 실행
           ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
@@ -71,6 +87,11 @@ jobs:
             BACKEND_DIR="\$APP_DIR/backend"
 
             echo "📥 backend 폴더 동기화 완료"
+            echo "🔍 디렉토리 구조 확인..."
+            echo "   APP_DIR: \$APP_DIR"
+            echo "   BACKEND_DIR: \$BACKEND_DIR"
+            ls -la "\$APP_DIR" || echo "APP_DIR이 없습니다"
+            ls -la "\$BACKEND_DIR" || echo "BACKEND_DIR이 없습니다"
 
             # 필수 패키지 설치 확인
             echo "📦 필수 패키지 확인 중..."
@@ -96,9 +117,22 @@ jobs:
               echo "❌ 오류: \$BACKEND_DIR 디렉토리가 존재하지 않습니다."
               echo "   생성 중..."
               mkdir -p "\$BACKEND_DIR"
+              echo "   디렉토리 생성 완료"
             fi
-            cd "\$BACKEND_DIR" || { echo "❌ cd 실패: \$BACKEND_DIR"; exit 1; }
+
+            # 디렉토리 내용 확인
+            echo "📋 디렉토리 내용:"
+            ls -la "\$BACKEND_DIR" || echo "디렉토리 읽기 실패"
+
+            cd "\$BACKEND_DIR" || {
+              echo "❌ cd 실패: \$BACKEND_DIR"
+              echo "   현재 위치: \$(pwd)"
+              echo "   디렉토리 존재 여부: [ -d '\$BACKEND_DIR' ] && echo '존재' || echo '없음'"
+              exit 1
+            }
             echo "✅ 현재 디렉토리: \$(pwd)"
+            echo "📄 requirements.txt 확인:"
+            ls -la requirements.txt || echo "⚠️  requirements.txt 파일이 없습니다!"
 
             pip install -r requirements.txt
 
