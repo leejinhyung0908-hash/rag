@@ -55,16 +55,36 @@ jobs:
             "mkdir -p ${EC2_BACKEND_DIR} && chmod 755 ${EC2_BACKEND_DIR}"
 
           # rsync로 backend 폴더만 전송
+          # working-directory가 backend이므로, 현재 디렉토리는 backend/
           echo "📤 backend 폴더 동기화 중..."
-          echo "   소스: $(pwd)"
-          echo "   소스 내용:"
+          echo "   현재 작업 디렉토리: $(pwd)"
+          echo "   소스 내용 (현재 디렉토리):"
           ls -la . | head -10
+          echo "   requirements.txt 존재 여부:"
+          [ -f "requirements.txt" ] && echo "   ✅ requirements.txt 존재" || echo "   ❌ requirements.txt 없음"
           echo "   대상 경로: ${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"
 
+          # rsync: 현재 디렉토리(backend/)의 모든 내용을 EC2의 ${EC2_BACKEND_DIR}/로 복사
+          # 중요: rsync의 동작 방식
+          # - rsync ./ target/  -> 현재 디렉토리의 내용을 target/에 복사
+          # - rsync . target/   -> 현재 디렉토리의 내용을 target/에 복사 (동일)
+          # - rsync ./ target   -> 현재 디렉토리를 target이라는 이름으로 복사 (잘못됨)
+          # 따라서 대상 경로 끝에 반드시 / 를 붙여야 함
+          echo "   rsync 실행: $(pwd)/* -> ${EC2_BACKEND_DIR}/"
+          echo "   대상 경로 확인: ${EC2_BACKEND_DIR}/ (끝에 슬래시 있음)"
+
           # rsync 실행 및 결과 확인
+          # * 을 사용하여 현재 디렉토리의 모든 파일과 폴더를 명시적으로 복사
+          # 이렇게 하면 현재 디렉토리 자체가 아닌 내용만 복사됨
           if rsync -avz --delete \
             -e "ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no" \
-            ./ \
+            --exclude='.git' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.env' \
+            --exclude='.pytest_cache' \
+            --exclude='*.log' \
+            * \
             "${EC2_USER}@${EC2_HOST}:${EC2_BACKEND_DIR}/"; then
             echo "✅ rsync 성공"
           else
@@ -76,7 +96,17 @@ jobs:
           echo "🔍 rsync 후 디렉토리 확인..."
           ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
             ${EC2_USER}@${EC2_HOST} \
-            "echo '디렉토리 존재 여부:' && [ -d ${EC2_BACKEND_DIR} ] && echo '✅ 존재' || echo '❌ 없음'; echo '디렉토리 내용:' && ls -la ${EC2_BACKEND_DIR}/ 2>&1 | head -10 || echo '읽기 실패'"
+            "echo '=== 디렉토리 확인 ===' && \
+             echo 'APP_DIR 존재 여부:' && [ -d ${EC2_APP_DIR} ] && echo '✅ 존재' || echo '❌ 없음' && \
+             echo 'BACKEND_DIR 존재 여부:' && [ -d ${EC2_BACKEND_DIR} ] && echo '✅ 존재' || echo '❌ 없음' && \
+             echo '' && \
+             echo 'APP_DIR 내용:' && ls -la ${EC2_APP_DIR}/ 2>&1 | head -15 && \
+             echo '' && \
+             echo 'BACKEND_DIR 내용:' && ls -la ${EC2_BACKEND_DIR}/ 2>&1 | head -15 && \
+             echo '' && \
+             echo 'requirements.txt 위치 확인:' && \
+             ([ -f ${EC2_BACKEND_DIR}/requirements.txt ] && echo '✅ ${EC2_BACKEND_DIR}/requirements.txt 존재' || echo '❌ ${EC2_BACKEND_DIR}/requirements.txt 없음') && \
+             ([ -f ${EC2_APP_DIR}/requirements.txt ] && echo '⚠️  ${EC2_APP_DIR}/requirements.txt 존재 (잘못된 위치!)' || echo '✅ ${EC2_APP_DIR}/requirements.txt 없음 (정상)')"
 
           # EC2에서 배포 스크립트 실행
           ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no \
