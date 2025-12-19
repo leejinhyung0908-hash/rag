@@ -72,20 +72,28 @@ jobs:
 
             echo "📥 backend 폴더 동기화 완료"
 
+            # 필수 패키지 설치 확인
+            echo "📦 필수 패키지 확인 중..."
+            if ! dpkg -l | grep -q python3-venv; then
+              echo "📥 python3-venv 패키지 설치 중..."
+              sudo apt-get update -qq
+              sudo apt-get install -y python3-venv python3-pip
+            fi
+
             # Python 가상환경 설정
-            if [ ! -d "$APP_DIR/venv" ]; then
+            if [ ! -d "\$APP_DIR/venv" ]; then
               echo "🐍 Python 가상환경 생성..."
-              python3 -m venv "$APP_DIR/venv"
+              python3 -m venv "\$APP_DIR/venv"
             fi
 
             echo "📚 의존성 설치..."
-            source "$APP_DIR/venv/bin/activate"
+            source "\$APP_DIR/venv/bin/activate"
             pip install --upgrade pip
-            cd "$BACKEND_DIR"
+            cd "\$BACKEND_DIR"
             pip install -r requirements.txt
 
             # 환경 변수 파일 확인
-            if [ ! -f "$APP_DIR/.env" ]; then
+            if [ ! -f "\$APP_DIR/.env" ]; then
               echo "⚠️  .env 파일이 없습니다. 수동으로 생성해주세요."
             fi
 
