@@ -14,7 +14,7 @@ from backend.services.rag import (
 )
 from backend.config import settings
 
-router = APIRouter(prefix="/api/v1", tags=["chat"])
+router = APIRouter(prefix="/api", tags=["chat"])
 
 
 @router.post("/chat", response_model=ChatResponse)
