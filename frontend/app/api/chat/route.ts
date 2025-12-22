@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     // Python 백엔드 RAG API 호출
     // 로컬 개발: .env.local에서 NEXT_PUBLIC_API_URL=http://localhost:8000 설정
     // Vercel 배포: Dashboard → Settings → Environment Variables에서 설정 필수
-    const backendUrl = "http://3.34.47.44:8000";
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
     // 디버깅을 위한 로그 (Vercel 함수 로그에서 확인 가능)
     console.log("[Next.js API] NEXT_PUBLIC_API_URL env:", process.env.NEXT_PUBLIC_API_URL);
