@@ -14,13 +14,16 @@ async def health_check() -> HealthResponse:
     db_status = "unknown"
     conn = get_global_db_connection()
     try:
-        if conn and not conn.closed:
+        if conn is None:
+            db_status = "disconnected"
+        elif conn.closed:
+            db_status = "disconnected"
+        else:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
             db_status = "connected"
-        else:
-            db_status = "disconnected"
-    except Exception:
+    except Exception as e:
+        print(f"[Health] DB 체크 오류: {e}", flush=True)
         db_status = "error"
 
     return HealthResponse(status="ok", database=db_status)
