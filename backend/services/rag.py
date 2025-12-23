@@ -25,8 +25,6 @@ def _build_rag_prompt(question: str, retrieved_docs: Sequence[str]) -> str:
     """RAG 공통 프롬프트를 생성한다."""
     context = "\n\n".join(f"- {doc}" for doc in retrieved_docs)
     return (
-        "너는 RAG 시스템의 어시스턴트야.\n"
-        "다음 `컨텍스트`만을 근거로 한국어로 간단하고 정확하게 답변해.\n\n"
         f"컨텍스트:\n{context}\n\n"
         f"질문: {question}"
     )
