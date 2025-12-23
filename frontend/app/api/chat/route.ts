@@ -24,22 +24,26 @@ export async function POST(request: Request) {
     // Python 백엔드 RAG API 호출
     // 로컬 개발: .env.local에서 NEXT_PUBLIC_API_URL=http://localhost:8000 설정
     // Vercel 배포: Dashboard → Settings → Environment Variables에서 설정 필수
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    // 오타 대응: NEXT_PUPLIC_API_URL도 체크
+    const backendUrl =
+      process.env.NEXT_PUBLIC_API_URL ||
+      process.env.NEXT_PUPLIC_API_URL ||
+      "http://localhost:8000";
 
-    // 디버깅을 위한 로그 (Vercel 함수 로그에서 확인 가능)
-    console.log("[Next.js API] NEXT_PUBLIC_API_URL env:", process.env.NEXT_PUBLIC_API_URL);
-    console.log("[Next.js API] BACKEND_URL (사용 중):", backendUrl);
+    // 디버깅을 위한 로그 (민감 정보 은닉)
+    const hasEnvVar = !!(process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUPLIC_API_URL);
+    console.log("[Next.js API] 환경 변수 설정 여부:", hasEnvVar ? "✅ 설정됨" : "❌ 미설정");
+    console.log("[Next.js API] 백엔드 URL 사용 중:", backendUrl.includes("localhost") ? "localhost (로컬)" : "프로덕션 URL");
 
     // Vercel 배포 환경에서 localhost 사용 시 경고
     if (backendUrl.includes("localhost") && process.env.VERCEL) {
       console.error("[Next.js API] ⚠️ 경고: Vercel 배포 환경에서 localhost를 사용하고 있습니다!");
-      console.error("[Next.js API] Vercel Dashboard → Settings → Environment Variables에서 NEXT_PUBLIC_API_URL을 EC2 IP로 설정해주세요.");
+      console.error("[Next.js API] Vercel Dashboard → Settings → Environment Variables에서 NEXT_PUBLIC_API_URL을 설정해주세요.");
     }
     console.log("[Next.js API] 요청 모드:", mode);
     console.log("[Next.js API] 요청 질문:", question.substring(0, 50) + "...");
 
     const requestUrl = `${backendUrl}/api/chat`;
-    console.log("[Next.js API] 요청 URL:", requestUrl);
 
     try {
       const response = await fetch(requestUrl, {
@@ -79,14 +83,13 @@ export async function POST(request: Request) {
       console.error("[Next.js API] 백엔드 연결 실패:", {
         error: fetchError instanceof Error ? fetchError.message : String(fetchError),
         name: fetchError instanceof Error ? fetchError.name : "Unknown",
-        backendUrl,
+        // URL은 로그에서만 제한적으로 표시 (에러 응답에는 포함하지 않음)
       });
 
       return Response.json(
         {
           error: "백엔드 서버에 연결할 수 없습니다.",
           details: fetchError instanceof Error ? fetchError.message : String(fetchError),
-          backendUrl: backendUrl, // 디버깅을 위해 URL 포함
         },
         { status: 503 }
       );
