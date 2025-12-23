@@ -132,11 +132,7 @@ chatbotservice/rag.kroaddy.site/
 - **통합 데이터베이스**: 모든 기능이 하나의 DB 사용
 - **LangChain 통합**: `langchain-postgres` 사용
 
-```python
-# backend/dependencies.py
-DATABASE_URL = "postgresql+psycopg://..."
-PGENGINE_URL = "postgresql+asyncpg://..."
-```
+
 
 ### 3. LLM 통합 방식
 

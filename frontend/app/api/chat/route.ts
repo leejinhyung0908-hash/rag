@@ -1,5 +1,3 @@
-import { NextRequest, NextResponse } from "next/server";
-
 type ChatRequest = {
   question: string;
   mode?: "rag" | "openai" | "rag_openai" | "rag_local" | "local";
@@ -11,13 +9,13 @@ type ChatResponse = {
   mode?: string;
 };
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const body: ChatRequest = await request.json();
     const { question, mode = "rag_openai" } = body;
 
     if (!question || !question.trim()) {
-      return NextResponse.json(
+      return Response.json(
         { error: "질문이 비어있습니다." },
         { status: 400 }
       );
@@ -63,7 +61,7 @@ export async function POST(request: NextRequest) {
           statusText: response.statusText,
           error: errorText,
         });
-        return NextResponse.json(
+        return Response.json(
           {
             error: "백엔드 서버에서 오류가 발생했습니다.",
             details: errorText,
@@ -75,7 +73,7 @@ export async function POST(request: NextRequest) {
 
       const data: ChatResponse = await response.json();
       console.log("[Next.js API] 응답 성공");
-      return NextResponse.json(data);
+      return Response.json(data);
     } catch (fetchError) {
       // fetch 자체가 실패한 경우 (네트워크 오류, 타임아웃 등)
       console.error("[Next.js API] 백엔드 연결 실패:", {
@@ -84,7 +82,7 @@ export async function POST(request: NextRequest) {
         backendUrl,
       });
 
-      return NextResponse.json(
+      return Response.json(
         {
           error: "백엔드 서버에 연결할 수 없습니다.",
           details: fetchError instanceof Error ? fetchError.message : String(fetchError),
@@ -98,7 +96,7 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
     });
-    return NextResponse.json(
+    return Response.json(
       {
         error: "서버 오류가 발생했습니다.",
         details: error instanceof Error ? error.message : String(error),
