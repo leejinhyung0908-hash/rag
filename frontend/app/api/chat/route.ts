@@ -44,8 +44,10 @@ export async function POST(request: Request) {
     console.log("[Next.js API] 요청 질문:", question.substring(0, 50) + "...");
 
     const requestUrl = `${backendUrl}/api/chat`;
+    console.log("[Next.js API] 요청 URL 구성:", `${backendUrl}/api/chat`);
 
     try {
+      console.log("[Next.js API] 백엔드로 요청 시작...");
       const response = await fetch(requestUrl, {
         method: "POST",
         headers: {
@@ -80,16 +82,26 @@ export async function POST(request: Request) {
       return Response.json(data);
     } catch (fetchError) {
       // fetch 자체가 실패한 경우 (네트워크 오류, 타임아웃 등)
+      const errorMessage = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      const errorName = fetchError instanceof Error ? fetchError.name : "Unknown";
+
       console.error("[Next.js API] 백엔드 연결 실패:", {
-        error: fetchError instanceof Error ? fetchError.message : String(fetchError),
-        name: fetchError instanceof Error ? fetchError.name : "Unknown",
-        // URL은 로그에서만 제한적으로 표시 (에러 응답에는 포함하지 않음)
+        error: errorMessage,
+        name: errorName,
+        requestUrl: requestUrl, // 디버깅을 위해 URL 포함
+        backendUrl: backendUrl, // 디버깅을 위해 URL 포함
       });
+
+      // 타임아웃 에러인지 확인
+      if (errorName === "TimeoutError" || errorMessage.includes("timeout")) {
+        console.error("[Next.js API] 타임아웃: 백엔드 서버가 30초 내에 응답하지 않았습니다.");
+      }
 
       return Response.json(
         {
           error: "백엔드 서버에 연결할 수 없습니다.",
-          details: fetchError instanceof Error ? fetchError.message : String(fetchError),
+          details: errorMessage,
+          errorType: errorName,
         },
         { status: 503 }
       );

@@ -40,7 +40,7 @@ export default function ChatPage() {
 
             // QLoRA 모드는 별도 엔드포인트 사용
             if (mode === "qlora") {
-                const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUPLIC_API_URL || "http://localhost:8000";
                 response = await fetch(`${backendUrl}/api/chat/qlora`, {
                     method: "POST",
                     headers: {
